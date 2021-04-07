@@ -1,3 +1,4 @@
+const Style = require('./tokens/Style')
 const Script = require('./tokens/script')
 const Tag = require('./tokens/tag')
 const Comment = require('./tokens/comment')
@@ -21,7 +22,11 @@ const rules = {
 	ID: /^(?:([\s\n\t]*)([a-zA-Z]([a-zA-Z\-_0-9]+(:[a-zA-Z\-_0-9]+)?)?))/,
 	DOCTYPE: /^(?:([\s\n\t]*)(!DOCTYPE))/,
 	SCRIPT_LITERAL_OPEN: /^(?:([\s\n\t]*)(<script))/,
-	SCRIPT_LITERAL_CLOSE: /^((.|\n|\s|\t)*?)(<\/\s*script>)/,
+	SCRIPT_LITERAL_CLOSE: /^(?:([\s\n\t]*)(<\/\s*script>))/,
+	SCRIPT_BODY: /^(((.|\n|\t|\s)*))(?=<\/\s*script>)/,
+	STYLE_LITERAL_OPEN: /^(?:([\s\n\t]*)(<style))/,
+	STYLE_LITERAL_CLOSE: /^(?:([\s\n\t]*)(<\/\s*style>))/,
+	STYLE_BODY: /^(((.|\n|\t|\s)*))(?=<\/\s*style>)/,
 	COMMENT_LITERAL: /^(?:([\s\n\t]*)(<!--(.|\n|\s|\t)*?-->))/,
 	COLON: /^(?:([\s\n\t]*)(:))/,
 	SLASH: /^(?:([\s\n\t]*)(\/))/,
@@ -664,21 +669,22 @@ function parseScript (lexer) {
 	const scriptToken = lexer.getNextToken([tokens.SCRIPT_LITERAL_OPEN])
 	const attrs = parseAttrs(lexer)
 	lexer.getNextToken([tokens.GT])
-	const match = lexer.currentLine.match(rules.SCRIPT_LITERAL_CLOSE)
-	const position = lexer.getPositionByOffset(lexer.currentOffset)
-	const text = new Token(
-		match[1],
-		match[0].length,
-		tokens.TEXT,
-		lexer.currentOffset,
-		position.line,
-		position.column
-	)
-	const script = new Script(attrs, text, scriptToken.line, scriptToken.column)
-	lexer.currentOffset += match[0].length
-	lexer.currentLine = lexer.currentLine.substr(match[0].length)
+	const scriptBody = lexer.getNextToken([tokens.SCRIPT_BODY])
+	lexer.getNextToken([tokens.SCRIPT_LITERAL_CLOSE])
+	const script = new Script(attrs, scriptBody, scriptToken.line, scriptToken.column)
 
 	appendNode(currentNode, script)
+}
+
+function parseStyle (lexer) {
+	const styleToken = lexer.getNextToken([tokens.STYLE_LITERAL_OPEN])
+	const attrs = parseAttrs(lexer)
+	lexer.getNextToken([tokens.GT])
+	const styleBody = lexer.getNextToken([tokens.STYLE_BODY])
+	lexer.getNextToken([tokens.STYLE_LITERAL_CLOSE])
+	const style = new Style(attrs, styleBody, styleToken.line, styleToken.column)
+
+	appendNode(currentNode, style)
 }
 
 function nodes (lexer) {
@@ -686,6 +692,7 @@ function nodes (lexer) {
 
 	while (true) { // eslint-disable-line
 		token = lexer.lookAhead([
+			tokens.STYLE_LITERAL_OPEN,
 			tokens.SCRIPT_LITERAL_OPEN,
 			tokens.COMMENT_LITERAL,
 			tokens.LT,
@@ -694,6 +701,9 @@ function nodes (lexer) {
 		], true)
 
 		switch (token.rule) {
+			case tokens.STYLE_LITERAL_OPEN:
+				parseStyle(lexer)
+				break
 			case tokens.SCRIPT_LITERAL_OPEN:
 				parseScript(lexer)
 				break
